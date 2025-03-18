@@ -21,7 +21,7 @@ import { DefaultArtifactClient } from '@actions/artifact'
 import * as core from '@actions/core'
 import * as fs from 'fs'
 import * as path from 'path'
-import semver, { Range } from 'semver'
+import * as semver from 'semver'
 
 //TODO we also need to set the right flags for other languages
 const warningsAsErrorsFlags = 'OTHER_SWIFT_FLAGS=-warnings-as-errors'
@@ -47,8 +47,10 @@ async function main() {
   const identity = getIdentity(core.getInput('code-sign-identity'), platform)
   const currentVerbosity = verbosity()
   const workspace = core.getInput('workspace')
+  const outputDirectory = core.getInput('output-directory') || './output'
 
   core.info(`» Selected Xcode ${selected}`)
+  core.info(`» Action: ${action}`)
 
   const reason: string | false = shouldGenerateXcodeproj()
   if (reason) {
@@ -60,7 +62,11 @@ async function main() {
   await configureKeychain()
   await configureProvisioningProfiles()
 
-  await build(await getScheme(workspace), workspace, arch)
+  if (action === 'release') {
+    await performReleaseBuild(await getScheme(workspace), workspace)
+  } else {
+    await build(await getScheme(workspace), workspace, arch)
+  }
 
   if (core.getInput('upload-logs') == 'always') {
     await uploadLogs()
@@ -80,11 +86,11 @@ async function main() {
     return value as Arch
   }
 
-  function getRangeInput(input: string): Range | undefined {
+  function getRangeInput(input: string): semver.Range | undefined {
     const value = core.getInput(input)
     if (!value) return undefined
     try {
-      return new Range(value)
+      return new semver.Range(value)
     } catch (error) {
       throw new Error(
         `failed to parse semantic version range from '${value}': ${error}`
@@ -194,6 +200,65 @@ async function main() {
     await xcodebuild(action, scheme, workspace, arch)
   }
 
+  async function performReleaseBuild(scheme?: string, workspace?: string) {
+    if (!scheme) {
+      throw new Error('A scheme is required for release action.')
+    }
+
+    await core.group('Building in release mode', async () => {
+      const tempPath = './temp'
+      const args = [
+        '-destination',
+        'platform=macOS',
+        '-scheme',
+        scheme,
+        '-configuration',
+        'Release',
+        '-derivedDataPath',
+        tempPath,
+      ]
+
+      if (workspace) args.splice(2, 0, '-workspace', workspace)
+
+      const cmdString = `xcodebuild ${args.join(' ')}`
+      core.info(`Running: ${cmdString}`)
+
+      // Ensure output directory exists
+      if (!fs.existsSync(outputDirectory)) {
+        fs.mkdirSync(outputDirectory, { recursive: true })
+      }
+
+      await xcodebuildX(args, currentVerbosity)
+
+      // Look for .app files
+      const buildProductsDir = path.join(
+        tempPath,
+        'Build',
+        'Products',
+        'Release'
+      )
+      const appFiles = fs
+        .readdirSync(buildProductsDir)
+        .filter((file) => file.endsWith('.app'))
+
+      if (appFiles.length === 0) {
+        throw new Error('No .app files found in build products directory')
+      }
+
+      // Assuming the app name matches the scheme name
+      const appName = `${scheme}.app`
+      const appFile = appFiles.find((file) => file === appName) || appFiles[0]
+      const sourcePath = path.join(buildProductsDir, appFile)
+      const destPath = path.join(outputDirectory, appFile)
+
+      core.info(`Copying ${sourcePath} to ${destPath}`)
+
+      // Copy the app file to the output directory
+      fs.cpSync(sourcePath, destPath, { recursive: true })
+      core.info(`Successfully copied app to ${destPath}`)
+    })
+  }
+
   //// helper funcs
 
   async function xcodebuild(
@@ -238,6 +303,8 @@ async function main() {
 
       if (action) args.push(action)
 
+      const cmdString = `xcodebuild ${args.join(' ')}`
+      core.info(`Running: ${cmdString}`)
       await xcodebuildX(args, currentVerbosity)
     })
   }
@@ -286,7 +353,7 @@ async function run() {
       `
       We feel you.
       CI failures suck.
-      Download the \`.xcresult\` files we just artifact’d.
+      Download the \`.xcresult\` files we just artifact'd.
       They *really* help diagnose what went wrong!
       ${href}
       `.replace(/\s+/g, ' ')
@@ -324,7 +391,7 @@ async function uploadLogs() {
     const artifact = new DefaultArtifactClient()
 
     for (const xcresult of xcresults) {
-      // random part because GitHub doesn’t yet expose any kind of per-job, per-matrix ID
+      // random part because GitHub doesn't yet expose any kind of per-job, per-matrix ID
       // https://github.community/t/add-build-number/16149/17
       const nonce = Math.random()
         .toString(36)

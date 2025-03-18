@@ -2,7 +2,7 @@ name: mxcl/Xcodebuild
 author: Max Howell
 description: >
   A continuously resilient `xcodebuild` action.
-  “The best `xcodebuild` action by far.” ―mxcl
+  "The best `xcodebuild` action by far." ―mxcl
 inputs:
   xcode:
     description: |
@@ -31,13 +31,21 @@ inputs:
   action:
     description: |
       * The most common actions are `test`, `build`.
-      * See the `xcodebuild` manual for available actions.
+      * Special action `release` will build the app in Release configuration and copy
+        the resulting .app file to the specified output-directory.
+      * See the `xcodebuild` manual for other available actions.
       * Specifying `none` skips the explicit `xcodebuild` step allowing you
         to use this (GitHub) Action solely for selecting an Xcode version.
       * Specifying `''`, `null` or `~` will cause xcodebuild to behave as it
         does without an action specified (usually `build`)
     required: false
     default: test
+  output-directory:
+    description: |
+      * When action is set to `release`, specifies the directory where the built app will be copied.
+      * For example, if set to `./output`, the .app file will be copied there.
+    required: false
+    default: './output'
   code-coverage:
     description: Enables code coverage
     required: false
