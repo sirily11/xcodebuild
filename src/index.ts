@@ -206,7 +206,14 @@ async function main() {
     }
 
     await core.group('Building in release mode', async () => {
-      const tempPath = './temp'
+      // Ensure output directory exists
+      if (!fs.existsSync(outputDirectory)) {
+        fs.mkdirSync(outputDirectory, { recursive: true })
+      }
+
+      const archivePath = path.join(outputDirectory, 'output.xcarchive')
+
+      // Base arguments
       const args = [
         '-destination',
         'platform=macOS',
@@ -214,48 +221,45 @@ async function main() {
         scheme,
         '-configuration',
         'Release',
-        '-derivedDataPath',
-        tempPath,
+        '-archivePath',
+        archivePath,
       ]
 
+      // Add workspace if provided
       if (workspace) args.splice(2, 0, '-workspace', workspace)
+
+      // Always add allowProvisioningUpdates flag for release action
+      args.push('-allowProvisioningUpdates')
+
+      // Add code signing parameters
+      const buildSettings: string[] = []
+
+      // Add CODE_SIGN_IDENTITY if provided
+      const codeSignIdentity = core.getInput('code-sign-identity')
+      if (codeSignIdentity) {
+        buildSettings.push(`CODE_SIGN_IDENTITY="${codeSignIdentity}"`)
+      }
+
+      // Add CODE_SIGN_STYLE if provided
+      buildSettings.push(`CODE_SIGN_STYLE=Manual`)
+
+      // Always add OTHER_CODE_SIGN_FLAGS
+      buildSettings.push(
+        `OTHER_CODE_SIGN_FLAGS="--options=runtime --timestamp"`
+      )
+
+      // Add build settings to args
+      args.push(...buildSettings)
+
+      // Add archive action at the end
+      args.push('archive')
 
       const cmdString = `xcodebuild ${args.join(' ')}`
       core.info(`Running: ${cmdString}`)
 
-      // Ensure output directory exists
-      if (!fs.existsSync(outputDirectory)) {
-        fs.mkdirSync(outputDirectory, { recursive: true })
-      }
-
       await xcodebuildX(args, currentVerbosity)
 
-      // Look for .app files
-      const buildProductsDir = path.join(
-        tempPath,
-        'Build',
-        'Products',
-        'Release'
-      )
-      const appFiles = fs
-        .readdirSync(buildProductsDir)
-        .filter((file) => file.endsWith('.app'))
-
-      if (appFiles.length === 0) {
-        throw new Error('No .app files found in build products directory')
-      }
-
-      // Assuming the app name matches the scheme name
-      const appName = `${scheme}.app`
-      const appFile = appFiles.find((file) => file === appName) || appFiles[0]
-      const sourcePath = path.join(buildProductsDir, appFile)
-      const destPath = path.join(outputDirectory, appFile)
-
-      core.info(`Copying ${sourcePath} to ${destPath}`)
-
-      // Copy the app file to the output directory
-      fs.cpSync(sourcePath, destPath, { recursive: true })
-      core.info(`Successfully copied app to ${destPath}`)
+      core.info(`Successfully archived app to ${archivePath}`)
     })
   }
 

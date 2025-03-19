@@ -31,8 +31,8 @@ inputs:
   action:
     description: |
       * The most common actions are `test`, `build`.
-      * Special action `release` will build the app in Release configuration and copy
-        the resulting .app file to the specified output-directory.
+      * Special action `release` will build the app in Release configuration and archive
+        the resulting app to the specified output-directory.
       * See the `xcodebuild` manual for other available actions.
       * Specifying `none` skips the explicit `xcodebuild` step allowing you
         to use this (GitHub) Action solely for selecting an Xcode version.
@@ -42,8 +42,8 @@ inputs:
     default: test
   output-directory:
     description: |
-      * When action is set to `release`, specifies the directory where the built app will be copied.
-      * For example, if set to `./output`, the .app file will be copied there.
+      * When action is set to `release`, specifies the directory where the built app will be archived.
+      * For example, if set to `./output`, the .xcarchive file will be created at ./output/output.xcarchive.
     required: false
     default: './output'
   code-coverage:
@@ -95,6 +95,7 @@ inputs:
     description: |
       Identity to be used for code signing. If your project specifies a
       `CODE_SIGN_IDENTITY`, this will override it.
+      For release action, this will be used as CODE_SIGN_IDENTITY="value" in the build command.
     required: false
   mobile-provisioning-profiles-base64:
     description: |
