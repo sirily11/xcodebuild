@@ -11,6 +11,7 @@ import {
   getDestination,
   getIdentity,
   getSchemeFromPackage,
+  listCodeSigningIdentities,
   spawn,
   verbosity,
   xcselect,
@@ -19,6 +20,7 @@ import type { Arch, Platform } from './lib'
 import xcodebuildX from './xcodebuild'
 import { DefaultArtifactClient } from '@actions/artifact'
 import * as core from '@actions/core'
+import { exec } from '@actions/exec'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as semver from 'semver'
@@ -180,6 +182,14 @@ async function main() {
 
     await core.group('Configuring code signing', async () => {
       await createKeychain(certificate, passphrase)
+
+      await core.group('Available Code Signing Identities', async () => {
+        try {
+          await listCodeSigningIdentities()
+        } catch (error) {
+          core.warning(`Failed to list code signing identities: ${error}`)
+        }
+      })
     })
   }
 

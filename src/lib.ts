@@ -236,6 +236,16 @@ async function destination(
   }
 }
 
+export async function listCodeSigningIdentities(): Promise<void> {
+  const out = await exec('security', [
+    'find-identity',
+    '-v',
+    '-p',
+    'codesigning',
+  ])
+  core.info(out)
+}
+
 async function exec(
   command: string,
   args?: string[],
